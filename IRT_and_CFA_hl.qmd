@@ -1,0 +1,337 @@
+---
+title: "IRT and CFA"
+format: 
+  pdf: default
+  gfm: default
+execute:
+  cache: true
+  
+editor: visual
+---
+
+Below, I will analyze the same dataset using both Item Response Theory (IRT) and Confirmatory Factor Analysis (CFA) to compare and contrast between the two.
+
+```{r setup, echo = FALSE}
+#| output: FALSE
+#| cache: TRUE
+
+library(corrplot)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(lavaan)
+library(lavaanPlot)
+library(ltm)
+library(psych)
+library(semTools)
+library(tidyverse)
+
+ds <- haven::read_xpt("https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DPQ_I.XPT")
+ds <- ds[- 10]
+```
+
+## The Data
+
+The 2015-2016 NHANES Mental Health - Depression Screener.
+
+Originally a rating scale (0, Not at all; 1, several days; 2, more than half the days; 3, nearly everyday)
+
+Q1: "Have little interest in doing things"
+
+Q2: "Feeling down, depressed, or hopeless"
+
+Q3: "Trouble sleeping or sleeping too much"
+
+Q4: "Feeling tired or having little energy"
+
+Q5: "Poor appetite or overeating"
+
+Q6: "Feeling bad about yourself"
+
+Q7: "Trouble concentrating on things"
+
+Q8: "Moving or speaking slowly or too fast"
+
+Q9: "Thought you would be better off dead"
+
+Q10: "Difficulty these problems have caused"
+
+Looking at the questions, we clearly see that Q10 does not fit in with the rest. It violates the assumption of local independence (A participant's answer to Q10 depends on their answers to the other questions). In light of that, I had Q10 dropped from the data set.
+
+## Import Dataset
+
+I opted to dichotomize the data by having any value above 0 changed to a 1.
+
+```{r loadData, echo = FALSE}
+# Mental Health - Depression Screener from
+# https://wwwn.cdc.gov/nchs/nhanes/search/datapage.aspx?Component=Questionnaire&CycleBeginYear=2015
+
+names(ds) <- c("id", paste0("q", 1:10))
+ds$id <- NULL
+
+ds <- ds %>%
+  mutate_at(vars(q1:q9), ~ifelse(. > 3, NA, .))
+
+ds_dich <- ds %>%
+  mutate_at(vars(q1:q9), ~ifelse(. > 0, 1, 0))
+
+
+
+qmeans <- apply(ds_dich , 2, mean, na.rm = TRUE)
+#kable(qmeans, digits=2) 
+barplot(qmeans)
+
+```
+
+This graph shows mean number of endorsements an answer received. Here, we can see that q4 ("Feeling tired or having little energy") had the most positive answers, while q9 ("Thought you would be better off dead") had very few endorsements.
+
+## Fit 1PL Model
+
+Here, I fitted a 1PL (1-parameter logistic) model to estimate item difficulty based on how many people answered the items.
+
+```{r}
+pl1 <- rasch(ds_dich)
+kable(summary(pl1)$coefficients, digits=2)
+
+```
+
+Every item was fixed to have a discrimination parameter of 2.04.
+
+## Fit 2PL Model
+
+Next, I fitted a 2PL model to estimate each item's discriminatory parameter.
+
+```{r}
+pl2 <- ltm(ds_dich ~ z1)
+
+kable(summary(pl2)$coefficients, digits=2)
+
+```
+
+Here, I test to see if PL2 has a significantly better fit than PL1, by evaluating their model characteristics within an ANOVA.
+
+```{r}
+anova(pl1, pl2)
+```
+
+The significant p-value in this chart tells us that the 2PL is a better fit to the data the 1PL. The fit of the model has been improved by estimating the discriminatory parameter of each item, instead of fixing it to one value.
+
+## Item Characteristic Curves
+
+Below, I plotted the item characteristic curves of the 10 items to better see the discriminability across items
+
+```{r}
+
+plot(pl2, type = c("ICC"))
+```
+
+In the ICCs, we can better see the probability of endorsing an answer at varying ability levels. We see that q4 ("Feeling tired or having little energy") has a range of abilities endorsing it, while with q9 ("Thought you would be better off dead"), only individuals with the highest depression level endorse it.
+
+## Item Information Curves
+
+```{r}
+plot(pl2, type = c("IIC"))
+```
+
+The IICs demonstrate that items range in how much information they provide about an individuals depression level for different ability levels. The red curve, q10, gives us a the most information at moderate depression levels. In contrast, q4 (the blue curve), gives us very low information because of how a range of depression levels it covers.
+
+## Sum of all IIC Curves
+
+```{r}
+
+plot(pl2, type = c("IIC"), items = c(0))
+```
+
+The test information function shows that the items as a whole provide the most information about low-to-moderate depression levels, and less about extreme high or low depression levels. This is desirable, as it is not important to discriminate between those with very low or very high depression. It is important to discriminate between those of moderate depression levels, which is what the test information function tells us it does.
+
+## Confirmatory Factor Analysis
+
+```{r}
+mod <-
+  "depression =~ q1 + q2 + q3 + q4 + q5 +
+                 q6 + q7 + q8 + q9 
+"
+
+
+cfafit <- cfa(mod, data = ds_dich,
+              ordered = c("q1", "q2", "q3", "q4", "q5",
+                          "q6", "q7", "q8", "q9"),
+              estimator = "WLSMV",
+              check.gradient = TRUE
+              )
+
+summary(cfafit, fit.measures = TRUE, standardized = TRUE)
+
+
+```
+
+The thresholds of the CFA have a similar pattern to that of the difficulty ability of each item. Similarly, the factor loadings of the CFA seem similar to the discrimination parameters from the IRT.
+
+```{r}
+semPlot::semPaths(cfafit, nCharNodes = 0, intercepts = FALSE)
+```
+
+## Check Modification Indices
+
+Next, I checked the modification indices for the assumption of *local independence* for any theoretical justification of adding covariances to the model.
+
+```{r}
+modindices(cfafit) %>% dplyr::arrange(desc(mi)) %>% head()
+
+
+```
+
+Some of the modification indices are high (e.g., q7\~\~q8), and the SEPC's are moderate.
+
+For example
+
+q7: "Trouble concentrating on things"
+
+q8: "Moving or speaking slowly or too fast"
+
+These do not seem to be particularly closely related.
+
+q2: "Feeling down, depressed, or hopeless"
+
+q6: "Feeling bad about yourself"
+
+Also, not closely related. Therefore, I did not add any of them to the model.
+
+## Compare discrimination's with factor loadings
+
+TODO: add link/citation to sources; find formula for converting factor loadings to discriminations
+
+Below I take a better look at the difference between my CFA's factor loadings and 2PL's discrimination abilities.
+
+TODO: it would be helpful to explain the equation
+
+```{r}
+model_loadings <- inspect(cfafit, what = "std")[["lambda"]]
+# model_loadings
+
+discrims <- pl2$coefficients[, 2]
+# for (i in discrims) {
+#   print(i / sqrt(3.29 + i**2))
+# }
+# cbind(loadings = model_loadings,
+#       discrims_to_loadings = discrims / sqrt(3.29 + discrims^2))
+
+D <- 1.7
+
+
+
+df_loadings <- cbind(loadings = model_loadings,
+                     discrims_to_loadings = (discrims / D) / (sqrt(1 + ((discrims / D)^2))))
+
+df_loadings <- df_loadings %>% as.data.frame() %>% 
+  dplyr::rename(cfa_loadings = depression)
+
+
+df_loadings %>% as.data.frame() %>% 
+  dplyr::mutate(dif = cfa_loadings-discrims_to_loadings, rat = cfa_loadings/discrims_to_loadings)
+```
+
+Pretty much identical! As expected, the 2PL model is roughly equivalent to the dichotomous CFA.
+
+```{r}
+
+```
+
+## Graded Response Model
+
+```{r}
+suppressMessages({
+  grm1 <- ltm::grm(ds)
+})
+
+```
+
+```{r}
+mod2 <-
+  "depression =~ q1 + q2 + q3 + q4 + q5 +
+                 q6 + q7 + q8 + q9 
+                 
+"
+
+
+cfafit2 <- cfa(mod2, data = ds,
+              ordered = c("q1", "q2", "q3", "q4", "q5",
+                          "q6", "q7", "q8", "q9"),
+              estimator = "WLSMV",
+              check.gradient = TRUE
+              )
+
+summary(cfafit2, fit.measures = TRUE, standardized = TRUE)
+```
+
+```{r}
+
+grm1
+df_coefs_disc <- summary(grm1)$coefficients %>% as.data.frame() %>%
+  t() %>%
+  as.data.frame()
+df_coefs_disc
+pl2
+
+
+
+```
+
+```{r}
+
+AIC(grm1)
+logLik(cfafit2)
+```
+
+## Rating Scale Model
+
+```{r}
+library(TAM)
+
+fa.parallel(ds, fa="fa")
+
+scree(ds, pc=FALSE)
+```
+
+```{r}
+
+myTAM <- tam.mml(ds, 
+                 irtmodel = "RSM")
+
+```
+
+```{r}
+
+plot(myTAM, 
+     type = "items", 
+     export = FALSE, 
+     package = "graphics", 
+     observed = TRUE, 
+     low = -6, 
+     high = 6)
+```
+
+```{r}
+plot(myTAM, 
+     type = "expected", 
+     ngroups = 6, 
+     low  = -6, 
+     high = 6,
+     package = "lattice", overlay = FALSE)
+```
+
+## Conclusion
+
+The IRT analysis showed that the questions were all positive, that the discrimination parameters were all good, that the IIC suggests that the scale is overall reliable, but the reliability peaks on low-moderate depression. But in a screening tool, this is probably what we want.
+
+The factor analysis gave broadly similar results to the IRT analysis, but not identical. The model fit was not perfect, suggesting that it was not unidimensional, which might be a problem. The modification indices suggested some additional covariances, but there did not seem to be strong theoretical foundation for adding those to the model.
+
+I wanted to try running a CFA using Maximum Likelihood with categorical data, as this might have given more similar results to the IRT. Lavaan does not support it, it is my understanding that Mplus does; but I don't have access to that.
+
+A drawback of this analysis is that I dichotomized the variables to simplify the analysis. The results might have been different if this was not done.
+
+Extension: Graded response model (GRM), Rating scale model (RSM)
+
+TODO: Create a GitHub repository for this analysis
+
+TODO: Look into measurement invariance (CFA) and differential item functioning (IRT)
