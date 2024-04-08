@@ -9,6 +9,10 @@ execute:
 editor: visual
 ---
 
+This analysis was written in Quarto, and the source file can be found at
+
+https://github.com/alexm123/CFAvsIRT
+
 Below, I will analyze the same dataset using both Item Response Theory (IRT) and Confirmatory Factor Analysis (CFA) to compare and contrast between the two.
 
 ```{r setup, echo = FALSE}
@@ -27,6 +31,8 @@ library(psych)
 library(semTools)
 library(TAM)
 library(tidyverse)
+
+
 ```
 
 ## The Data
@@ -59,7 +65,7 @@ Looking at the questions, we clearly see that Q10 does not fit in with the rest.
 
 ## Import Dataset
 
-I opted to dichotomize the data by having any value above 0 changed to a 1.
+For the initial analysis, I opted to dichotomize the data by having any value above 0 changed to a 1.
 
 ```{r loadData, echo = TRUE}
 # Mental Health - Depression Screener from
@@ -85,7 +91,7 @@ barplot(qmeans)
 
 ```
 
-This graph shows mean number of endorsements an answer received. Here, we can see that q4 ("Feeling tired or having little energy") had the most positive answers, while q9 ("Thought you would be better off dead") had very few endorsements.
+This graph shows the mean number of endorsements an answer received. Here, we can see that q4 ("Feeling tired or having little energy") had the most positive answers, while q9 ("Thought you would be better off dead") had very few endorsements.
 
 Before attempting to fit an IRT model, it would be good to examine whether the 9 items are all measuring the same latent variable. In our case, depression. This is done with a *scree test*, the components left of the "elbow" (the sharpest drop) of the graph should be retained. As we want to measure just 1 latent variable, we want there to be just 1 component before the elbow.
 
@@ -99,7 +105,7 @@ x <- 1:length(screep$fa.values)
 plot(x, screep$fa.values, type = "b", pch = 16, col = "blue", 
      xlab = "Factor Number", 
      ylab = "eigenvalues of factor analysis", 
-     main = "Parallel Analysis Scree Plot")
+     main = "Scree Plot")
 ```
 
 As shown, the scree plot suggests there is only 1 underlying factor. We can now proceed to fit the IRT models.
@@ -115,7 +121,7 @@ kable(summary(pl1)$coefficients, digits = 2)
 
 ```
 
-Q1 has a difficulty score of 0.84. This refers to the fact that an individual with the "depression level" of 0.84 would have a 50/50 chance of endorsing Q1. Every item was fixed to have a discrimination, which will be explained further on.
+Q1 has a difficulty score of 0.84. This refers to the fact that an individual with the "depression level" of 0.84 would have a 0.5 probability of endorsing Q1. Every item was fixed to have the same discrimination, which will be explained further on.
 
 ## Fit 2PL Model
 
@@ -131,13 +137,13 @@ kable(summary(pl2)$coefficients, digits = 2)
 
 ```
 
-Here, I test to see if PL2 has a significantly better fit than PL1, by evaluating their model characteristics within an ANOVA.
+Here, I test to see if 2PL model has a significantly better fit than 1PL model, by evaluating their model characteristics within an ANOVA. 2PL model has many more parameters, as seen by each question's discrimination parameter. The ANOVA will compare the AIC's of the two models, to see if the more complex model fits the data better.
 
 ```{r}
 anova(pl1, pl2)
 ```
 
-The significant p-value in this chart tells us that the 2PL is a better fit to the data the 1PL. The fit of the model has been improved by estimating the discrimination parameter of each item, instead of fixing it to one value.
+The significant p-value in this chart tells us that the 2PL is a better fit to the data the 1PL. The fit of the model has been improved by estimating the discrimination parameter of each item, instead of fixing it to one value. If both models had fit the data similarly well, then the parsimony principle tells us that the simpler model should have been favored.
 
 ## Item Characteristic Curves
 
@@ -148,7 +154,7 @@ Below, I plotted the item characteristic curves of the 10 items to better see th
 plot(pl2, type = c("ICC"))
 ```
 
-In the ICCs, we can better see the probability of endorsing an answer at varying ability levels. We see that q4 ("Feeling tired or having little energy") has a range of abilities endorsing it, while with q9 ("Thought you would be better off dead"), only individuals with the highest level of depression endorsed it. So, discrimination can be seen as the steepness of these curves.
+In the ICCs, we can better see the probability of endorsing an answer at varying ability levels. We see that q4 (the blue curve on the left; "Feeling tired or having little energy") has a range of abilities endorsing it, while with q9 (the black curve on the right; "Thought you would be better off dead"), only individuals with the highest level of depression endorsed it. So, discrimination can be seen as the steepness of these curves.
 
 ## Item Information Curves
 
@@ -156,7 +162,7 @@ In the ICCs, we can better see the probability of endorsing an answer at varying
 plot(pl2, type = c("IIC"))
 ```
 
-The IICs demonstrate that items range in how much information they provide about an individuals depression level for different ability levels. The red curve, q10, gives us a the most information at moderate depression levels. In contrast, q4 (the blue curve), gives us very low information because of how a range of depression levels it covers.
+The IICs demonstrate that items range in how much information they provide about an individuals depression level for different ability levels. Item q10 (the red curve) gives us a the most information at moderate depression levels. In contrast, item q4 (the blue curve), gives us very low information because of how wide a range of depression levels it covers.
 
 ## Sum of all IIC Curves
 
@@ -268,15 +274,17 @@ Examining the output, two things are immediately apparent. There are 3 extremity
 
 ## Item Characteristic and Item Information Curves
 
-Much the same as with the 2PL Model, I plotted the ICC to get a better view of the discrimination and difficulty of each question. For this, I chose to plot only the ICC of items 2 and 5, each having the largest difference in discriminations (3.010 for item 2, and 1.637 for item 5).
+Much the same as with the 2PL Model, I plotted the ICCs to get a better view of the discrimination and difficulty of each question. For this, I chose to plot only the ICCs of items 2 and 5, each having the largest difference in discriminations (3.010 for item 2, and 1.637 for item 5).
 
 ```{r}
 plot(grm1, type = "IIC", zrange = c(-5, 5))
-plot(grm1, type = "ICC", items = 2, zrange = c(-5, 5))
-plot(grm1, type = "ICC", items = 5, zrange = c(-5, 5))
+plot(grm1, type = "ICC", items = 2, zrange = c(-5, 5), 
+     main = "Item Characteristic Curves - Item: q2")
+plot(grm1, type = "ICC", items = 5, zrange = c(-5, 5),
+     main = "Item Characteristic Curves - Item: q5")
 ```
 
-The discrimination parameter acts as the slope of the curves, so item 2 (with a very high discrimination) has a very steep slope. Item 5 (a low discrimination) has a very shallow slope.
+The discrimination parameter acts as the slope of the curves, so the response categories of item 2 (with a very high discrimination) all have a very steep slope. The response categories of item 5 (a low discrimination) have a very shallow slope.
 
 For each item: As ability (level of depression) increases, the probability of selecting response category 1, "Not at all", decreases. And for response category 4, "nearly everyday", it's vice versa. This is expected, as someone without depression would easily select "not at all" for many of the questions, it's only if they have some level of depression they would start endorsing a higher category.
 
@@ -305,11 +313,11 @@ Up until a low-moderate depression level, both the dichotomous and polytomous IR
 ```{r}
 rsm1 <-TAM::tam.mml(ds,irtmodel ="RSM", verbose = FALSE)
 
-kable(rsm1$item)
+kable(rsm1$item[1:7])
 
 ```
 
-The difficulties, from the "AXsi\_.Cat1, AXsi\_.Cat2, and AXsi\_.Cat3" columns, while scaled differently, show the expected values. Q9 has the highest difficulty, and Q4 has the lowest. There are no discrimination parameters, which lowers the complexity of the model quite a bit. Next, I will graph the Item Characteristic Curves to better see what this constrained discriminatory parameter looks like.
+The difficulties, from the "AXsi\_.Cat1, AXsi\_.Cat2, and AXsi\_.Cat3" columns, while seemingly scaled differently, show the expected values. Q9 has the highest difficulty, and Q4 has the lowest. There are no discrimination parameters, which lowers the complexity of the model quite a bit. Next, I will graph the Item Characteristic Curves to better see what this constrained discriminatory parameter looks like.
 
 ## RSM: Item Characteristic Curves
 
@@ -322,6 +330,7 @@ plot(rsm1,
      low = -6,
      high = 6,
      items = c(2, 5))
+
 ```
 
 Interesting! The RSM would have us believe that Q2 and Q5 are extremely similar, even while they differ wildly in how discriminating they are. Next, I plot it's test information curve with the 2PL and GRM models.
